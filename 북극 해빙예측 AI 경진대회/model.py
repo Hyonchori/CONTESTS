@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class Encoder(nn.Module):
@@ -55,38 +54,31 @@ class Decoder(nn.Module):
         ]
         self.deconv3d_1 = nn.ConvTranspose3d(256, 64, 3, stride=2, padding=(0, 1, 1), output_padding=(0, 1, 1))
         self.deconv3d_2 = nn.ConvTranspose3d(128, 32, 3, stride=2, padding=(1, 1, 1), output_padding=(1, 1, 1))
+        self.deconv3d_3 = nn.ConvTranspose3d(64, 16, 3, stride=2, padding=(1, 1, 1), output_padding=(1, 1, 1))
         self.deconv3ds = [
             self.deconv3d_1,
-            self.deconv3d_2
+            self.deconv3d_2,
+            self.deconv3d_3
         ]
         self.relu = nn.LeakyReLU()
         self.dropout = nn.Dropout(p=0.1)
-        self.deconv = nn.ConvTranspose3d(64, 16, 3, stride=2, padding=(1, 1, 1), output_padding=(1, 1, 1))
         self.conv = nn.Conv3d(16, 1, 3, padding=(1, 1, 1))
 
     def forward(self, xs):
-        x = xs[-1]
-        x = self.deconv2ds[0](x)
-        x = self.relu(x)
-
-        x = torch.cat((x, xs[-2]), dim=1)
-        x = self.deconv2ds[1](x)
-        x = self.relu(x)
-
-        x = torch.cat((x, xs[-3]), dim=1)
-        x = self.deconv2ds[2](x)
-        x = self.relu(x)
-
-        shape = x.size()
-        x = x.view(shape[0], shape[1], 1, shape[2], shape[3])
-        x = torch.cat((x, xs[-4]), dim=1)
-
-        for deconv, skip in zip(self.deconv3ds, reversed(xs[0: 2])):
+        x = None
+        for deconv in self.deconv2ds:
+            if x is None:
+                x = xs.pop()
+            else:
+                x = torch.cat((x, xs.pop()), dim=1)
             x = deconv(x)
             x = self.relu(x)
-            x = torch.cat((x, skip), dim=1)
-        x = self.deconv(x)
-        x = self.relu(x)
+
+        for deconv in self.deconv3ds:
+            x = torch.cat((x, xs.pop()), dim=1)
+            x = deconv(x)
+            x = self.relu(x)
+
         x = self.dropout(x)
         x = self.conv(x)
         x = self.relu(x)
